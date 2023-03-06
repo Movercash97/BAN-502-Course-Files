@@ -1,0 +1,87 @@
+Libraries  
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(lubridate)
+```
+
+Read-in dataset  
+```{r}
+bike = read_csv("bike_cleaned.csv")
+```
+
+```{r mdy mutate}
+bike = bike %>% mutate(dteday = mdy(dteday))
+#Note that mdy is a lubridate package function
+#You can read more about lubridate here: https://lubridate.tidyverse.org/
+```
+
+```{r variable to factor}
+bike = bike %>% mutate_if(is.character, as_factor)
+```
+
+```{r hr to factor}
+bike = bike %>% mutate(hr = as_factor(hr))
+```
+
+Split the data (training and testing). 70% of the data to training. Stratified the random split by the response variable "count". 
+```{r}
+set.seed(1234)
+bike_split = initial_split(bike, prop = 0.70, strata = count)
+train = training(bike_split)
+test = testing(bike_split)
+```
+
+```{r}
+folds = vfold_cv(train, v = 10)
+```
+
+```{r Rows in Training Set}
+print(nrow(train))
+```
+## Question 1: How many rows of data are in the training set?
+## 12,163
+
+
+## Question 2: Stratifying the split by the “count” variable serves what purpose?
+## B. Stratifying by “count” ensures that “count” is similarly represented in both the training and testing sets
+
+Linear Regression Model  
+```{r}
+training_recipe = recipe(count ~ season + mnth + hr + holiday + weekday + temp + weathersit, train)
+
+lm_model = #give the model type a name 
+  linear_reg() %>% #specify that we are doing linear regression
+  set_engine("lm") #specify the specify type of linear tool we want to use 
+
+lm_wflow = 
+  workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(training_recipe)
+
+lm_fit = fit(lm_wflow, train)
+```
+
+```{r}
+summary(lm_fit$fit$fit$fit)
+```
+## Question 3: What is the adjusted R-squared value (to four digits) of the resulting model?
+## 0.6209
+
+## Question 4:Select the statements below that are likely true about the distribution of predictions?
+## C. Some predictions for the number of rides in an hour are negative
+
+See the results on the training set  
+```{r}
+lm_fit %>% predict(train) %>% bind_cols(train) %>% metrics(truth = count, estimate = .pred)
+```
+
+See the results on the test set  
+```{r}
+lm_fit %>% predict(test) %>% bind_cols(test) %>% metrics(truth = count, estimate = .pred)
+```
+
+## Question 5: What is the R-squared value (to four decimal places) of your model on the testing set?
+## R-Squared = 0.632  Adjusted R-Squared = 0.6287
+
+

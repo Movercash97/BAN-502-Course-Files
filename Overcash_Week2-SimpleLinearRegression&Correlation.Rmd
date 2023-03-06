@@ -1,0 +1,83 @@
+---
+title: "Simple Linear Regression and Correlation"
+author: "Matthew Overcash"
+date: "`r Sys.Date()`"
+output: html_document
+---
+# Module 2 - Assignment 1
+## Overcash, Matthew
+### Simple Linear Regression and Correlation
+
+```{r Libraries}
+library(tidyverse)
+library(tidymodels)
+library(GGally)
+library(lmtest)
+library(datasets)
+```
+
+```{r air}
+air <- data.frame(airquality)
+
+```
+
+```{r Questions}
+print(nrow(air))
+print(ncol(air))
+str(air) #all variables numeric
+summary(air) #no missingness
+```
+
+```{r remove missing data}
+air2 = air %>% drop_na()
+str(air2) #all variables numeric
+summary(air2) #no missingness
+```
+
+```{r Questions Continued}
+print(nrow(air2))
+print(ncol(air2))
+```
+
+```{r}
+ggpairs(air2)
+```
+## Temp is most strongly correlated
+## Day is least strongly correlated
+## As Temp Increases, Ozone Increases
+
+```{r Linear Regression}
+airrecipe = recipe(Ozone ~ Temp, air2)
+
+lm_model = linear_reg() %>% set_engine("lm")
+
+lm_workflow = workflow() %>% add_model(lm_model) %>% add_recipe(airrecipe)
+```
+
+```{r}
+lm_fit = fit(lm_workflow,air2)
+```
+
+```{r}
+summary(lm_fit$fit$fit$fit)
+```
+## 2.4391 is the slope. Look at the Estimate for Temp
+## 0.488 is the R-squared value
+## The "Temp" variables is significant to the model
+
+```{r}
+confint(lm_fit$fit$fit$fit)
+```
+## True, A 95% confidence interval for the slope coefficient does not contain zero.
+
+```{r}
+Temp_Prediction = data.frame(Temp = c(80))
+predict(lm_fit, new_data = Temp_Prediction)
+```
+## Predicted Ozone is 47.50
+
+```{r}
+dwtest(lm_fit$fit$fit$fit)
+```
+## True. There is no evidence of non-independent (autocorrelated) residuals.
+

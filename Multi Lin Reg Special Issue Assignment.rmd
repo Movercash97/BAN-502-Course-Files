@@ -1,0 +1,139 @@
+
+```{r}
+library(tidyverse) #tidyverse set of packages and functions
+library(tidymodels)
+library(glmnet) #for Lasso, ridge, and elastic net models 
+library(GGally) #create ggcorr and ggpairs plots
+library(ggcorrplot) #create an alternative to ggcorr plots
+library(MASS) #access to forward and backward selection algorithms
+library(lubridate)
+library(lmtest) #for the dw test
+library(splines) #for nonlinear fitting
+library(car) #for calculating the variance inflation factor
+```
+
+```{r}
+bike = read_csv("bike_cleaned.csv")
+summary(bike)
+```
+
+```{r mdy mutate}
+bike = bike %>% mutate(dteday = mdy(dteday))
+#Note that mdy is a lubridate package function
+#You can read more about lubridate here: https://lubridate.tidyverse.org/
+```
+
+```{r variable to factor}
+bike = bike %>% mutate_if(is.character, as_factor)
+```
+
+```{r hr to factor}
+bike = bike %>% mutate(hr = as_factor(hr))
+```
+
+```{r}
+ggcorr(bike, label = "TRUE", label_round = 2) 
+```
+# Which is best correlated with Count? D. Temp
+
+```{r hr/count}
+ggplot(bike,aes(x=hr,y=count)) + geom_boxplot() + geom_jitter(alpha = 0.15) + theme_bw()
+```
+
+```{r}
+ggplot(bike,aes(x=season,y=count)) + geom_boxplot() + geom_jitter(alpha = 0.15) + theme_bw()
+```
+# Summer appears to have the highest count of rides
+
+```{r}
+bike_recipe = recipe(count ~ hr,bike)
+
+lm_model = #give the model type a name 
+  linear_reg() %>% #specify that we are doing linear regression
+  set_engine("lm") #specify the specify type of linear tool we want to use 
+
+lm_wflow = 
+  workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(bike_recipe)
+
+lm_fit = fit(lm_wflow, bike)
+```
+
+```{r}
+summary(lm_fit$fit$fit$fit)
+```
+# 23 dummy variables are used to represent hr in the model
+# hr1 is the base level?
+# hr17 has the highest number of rides
+
+```{r}
+ggplot(bike, aes(x=temp, y=count)) + geom_point() + geom_smooth(method = lm, se = FALSE) + theme_bw()
+```
+# A. As “temp” increases, “count” appears to generally increase.
+
+```{r hr/temp to predict count}
+bike_recipe = recipe(count ~ hr + temp, bike)
+
+lm_model = #give the model type a name 
+  linear_reg() %>% #specify that we are doing linear regression
+  set_engine("lm") #specify the specify type of linear tool we want to use 
+
+lm_wflow = 
+  workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(bike_recipe)
+
+lm_fit2 = fit(lm_wflow, bike)
+```
+
+```{r}
+summary(lm_fit2$fit$fit$fit)
+```
+# What is the value of the slope coefficient for “hr23” in this model (to three decimal places)? 31.748
+# Adjusted R-Squared = 0.5886
+
+```{r}
+bike_recipe = recipe(count ~ temp + atemp, bike)
+
+lm_model = #give the model type a name 
+  linear_reg() %>% #specify that we are doing linear regression
+  set_engine("lm") #specify the specify type of linear tool we want to use 
+
+lm_wflow = 
+  workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(bike_recipe)
+
+lm_fit3 = fit(lm_wflow, bike)
+```
+
+```{r}
+summary(lm_fit3$fit$fit$fit)
+```
+# Adjusted R-Squared = 0.1638
+# A. Temp only
+# C. Multicollinearity
+
+```{r}
+allmod = lm(count ~ season + mnth + hr + holiday + weekday + workingday + weathersit + temp + atemp + hum + windspeed, bike) #use the ~. to include all predictors rather than typing them all in
+summary(allmod)
+```
+# Which two variables combine to make “workingday”?  B.weekday and holiday
+
+```{r}
+#backward
+backmod = stepAIC(allmod, direction = "backward", trace = TRUE) #trace = TRUE shows how the model is built (which variables are removed)
+summary(backmod)
+```
+# The backward stepwise method removes only one variable. Which variable is removed? B. workingday
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,186 @@
+```{r}
+options(tidyverse.quiet = TRUE)
+library(tidyverse)
+library(tidymodels)
+library(caret)
+library(rpart) #for classification trees
+library(rpart.plot) #for plotting trees
+library(rattle) #better visualization of classification trees
+library(RColorBrewer) #better visualization of classification trees
+```
+
+# Load data from the CSData.csv file.  
+```{r}
+heart = read_csv("heart_disease.csv")
+```
+
+Factor conversion. Convert sex, ChestPainType, RestingECG, ExerciseAngina, ST_Slope, and HeartDisease.
+```{r}
+heart = heart %>% mutate(Sex = as_factor(Sex)) %>% 
+  mutate(ChestPainType = as_factor(ChestPainType)) %>%
+  mutate(RestingECG = as_factor(RestingECG)) %>%
+  mutate(ExerciseAngina = as_factor(ExerciseAngina)) %>%
+  mutate(ST_Slope = as_factor(ST_Slope)) %>%
+  mutate(HeartDisease = as_factor(HeartDisease)) %>%
+  mutate(HeartDisease = fct_recode(HeartDisease, "No" = "0", "Yes" = "1" ))
+
+str(heart)
+```
+
+# Splitting.  
+```{r}
+set.seed(12345) 
+heart_split = initial_split(heart, prop = 0.7, strata = HeartDisease) #70% in training
+train = training(heart_split) 
+test = testing(heart_split)
+```
+
+```{r}
+nrow(train)
+```
+## Question 1: Split the data into training and testing sets. Your training set should have 70% of the data. Use a random number (set.seed) of 12345. Stratify your split by the response variable “HeartDisease”. How many rows are in the training set?
+## 642 Rows
+
+
+# Let's build a classification tree.  
+```{r}
+heart_recipe = recipe(HeartDisease ~., train)
+
+tree_model = decision_tree() %>% 
+  set_engine("rpart", model = TRUE) %>% #don't forget the model = TRUE flag
+  set_mode("classification")
+
+heart_wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(heart_recipe)
+
+heart_fit = fit(heart_wflow, train)
+```
+
+```{r}
+#extract the tree's fit from the fit object
+tree = heart_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+#plot the tree
+fancyRpartPlot(tree, tweak=1.5)
+```
+## Question 2: Create a classification tree to predict “violator” in the training set (using all of the other variables as predictors). Plot the tree. You do not need to manually tune the complexity parameter (i.e., it’s OK to allow R to try different cp values on its own). Do not use k-folds at this point. The first split in the tree is a split on which variable?
+## B. ST_Slope
+
+Look at the "rpart" complexity parameter "cp".    
+```{r}
+heart_fit$fit$fit$fit$cptable
+```
+## Question 3: Examine the complexity parameter (cp) values tried by R. Which cp value is optimal (recall that the optimal cp corresponds to the minimized “xerror” value)? Report your answer to two decimal places.
+## 0.01
+
+Create our folds  
+```{r}
+set.seed(123)
+folds = vfold_cv(train, v = 5)
+```
+
+
+```{r}
+heart_recipe = recipe(HeartDisease ~., train) %>%
+  step_dummy(all_nominal(),-all_outcomes())
+
+tree_model = decision_tree(cost_complexity = tune()) %>% 
+  set_engine("rpart", model = TRUE) %>% #don't forget the model = TRUE flag
+  set_mode("classification")
+
+tree_grid = grid_regular(cost_complexity(),
+                          levels = 25) #try 25 sensible values for cp
+
+heart_wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(heart_recipe)
+
+tree_res = 
+  heart_wflow %>% 
+  tune_grid(
+    resamples = folds,
+    grid = tree_grid
+    )
+
+tree_res
+```
+
+Borrowed code from: https://www.tidymodels.org/start/tuning/
+```{r}
+tree_res %>%
+  collect_metrics() %>%
+  ggplot(aes(cost_complexity, mean)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) 
+```
+## Question 4: From this plot, what is the accuracy of the model (to two decimal places) if a cp value of 0.1 is selected? You will need to “eyeball” this answer. I have included a bit of a tolerance in the answer on Canvas. As long as you are “close” to the correct accuracy, you will see your answer marked as correct.
+## 0.78
+
+```{r}
+best_tree = tree_res %>%
+  select_best("accuracy")
+
+best_tree
+```
+## Question 5: Which cp value (to four decimal places) yields the “optimal” accuracy value?
+## 0.0075
+
+```{r}
+final_wf = 
+  heart_wflow %>% 
+  finalize_workflow(best_tree)
+```
+
+```{r}
+final_fit = fit(final_wf, train)
+
+tree = final_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+fancyRpartPlot(tree, tweak = 1.5) 
+
+```
+## Question 6: Plot the tree that corresponds to the cp value from Task 6. Don’t forget to finalize your workflow and generate your final fit before trying to plot. How would you classify a patient that is “Male” with an “ST_Slope” this not “Flat”?
+## Yes
+
+Predictions on training set  
+```{r}
+treepred = predict(final_fit, train, type = "class")
+head(treepred)
+```
+
+Caret confusion matrix and accuracy, etc. calcs  
+```{r}
+confusionMatrix(treepred$.pred_class,train$HeartDisease,positive="Yes") #predictions first then actual
+```
+## Question 7: What is the accuracy (on the training set) of the “tree” that you generated in Question 6? Take your time and think about how to determine this value. Report your answer to four decimal places.
+## 0.8754
+
+## Question 8: What is the sensitivity of your model from Question 6 (on the training set)? Report your answer to four decimal places.
+## 0.9239
+
+## Question 9: What is the naive accuracy of your model from Question 6 (on the training set)? Report your answer to four decimal places.
+## 0.553
+
+Predictions on testing set  
+```{r}
+treepred_test = predict(final_fit, test, type = "class")
+head(treepred_test)
+```
+
+Caret confusion matrix and accuracy, etc. calcs  
+```{r}
+confusionMatrix(treepred_test$.pred_class,test$HeartDisease,positive="Yes") #predictions first then actual
+```
+## Question 10: What is the accuracy of your model from Question 6 on the testing set (to four decimal places)?
+## 0.8478
+
+
+

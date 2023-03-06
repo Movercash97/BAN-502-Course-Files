@@ -1,0 +1,226 @@
+
+Libraries  
+```{r}
+options(tidyverse.quiet=TRUE)
+library(tidyverse)
+library(tidymodels)
+library(cluster) #algorithms for clustering
+library(factoextra) #visualization
+library(dendextend) #viewing clustering dendograms
+```
+
+Read in data  
+```{r}
+trucks = read_csv("trucks.csv")
+str(trucks)
+summary(trucks)
+```
+
+```{r}
+ggplot(trucks, aes(Distance, Speeding)) +
+  geom_point(alpha = 0.4) + theme_bw()
+```
+## Question 1 Which characteristics (select all that apply) of the relationship between Distance and Speeding seems most apparent?
+## C. Longer distance drivers appear more likely to speed
+
+```{r}
+kmeans_recipe = recipe(~ Distance + Speeding, trucks) 
+
+trucks_dummy = kmeans_recipe %>% 
+  step_scale(all_numeric()) %>%
+  step_center(all_numeric()) 
+
+trucks_dummy = prep(trucks_dummy, trucks) #prepares the recipe
+
+trucks_cleaned = bake(trucks_dummy, trucks) #applies the recipe and yields a data frame
+```
+
+```{r}
+#we have two data frames now, one scaled and dummied and one with just row-wise deletion of missingness
+summary(trucks_cleaned)
+```
+## Question 2 What is the maximum value (to four decimal places) of the Distance variable in the scaled dataset?
+## 3.1560
+
+Perform k-means clustering with a pre-specified number of clusters. We use the scaled and dummied data frame.  
+```{r}
+set.seed(64)
+clusts = 
+  tibble(k =2) %>%
+  mutate(
+    kclust = map(k, ~kmeans(trucks_cleaned, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    augmented = map(kclust, augment, trucks_cleaned)
+  )
+
+clusts
+```
+
+```{r}
+clusters = 
+  clusts %>%
+  unnest(cols = c(tidied))
+
+assignments = 
+  clusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings = 
+  clusts %>%
+  unnest(cols = c(glanced))
+```
+
+```{r}
+p1 = 
+  ggplot(assignments, aes(x = Distance, y = Speeding)) +
+  geom_point(aes(color = .cluster), alpha = 0.8) + 
+  facet_wrap(~ k)
+p1
+```
+## Question 3 Which statement best describes the resulting clusters?
+## A. Drivers with shorter distances are in one cluster and those with longer distances are in another
+
+Let's try 8 clusters  
+Perform k-means clustering with a pre-specified number of clusters. We use the scaled and dummied data frame.  
+```{r}
+set.seed(412)
+clusts = 
+  tibble(k = 1:8) %>%
+  mutate(
+    kclust = map(k, ~kmeans(trucks_cleaned, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    augmented = map(kclust, augment, trucks_cleaned)
+  )
+
+clusts
+```
+
+```{r}
+clusters = 
+  clusts %>%
+  unnest(cols = c(tidied))
+
+assignments = 
+  clusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings = 
+  clusts %>%
+  unnest(cols = c(glanced))
+```
+
+```{r}
+p1 = 
+  ggplot(assignments, aes(x = Distance, y = Speeding)) +
+  geom_point(aes(color = .cluster), alpha = 0.8) + 
+  facet_wrap(~ k)
+p1
+```
+## Question 4 Create a visualization to show how the clusters appear from values of k from 1 to 8. Use a random number seed of 412. Which value of k appears to be most appropriate for this data?
+## K=4
+
+
+Perform k-means clustering with a pre-specified number of clusters.   
+```{r}
+set.seed(412)
+clusts = 
+  tibble(k = 1:10) %>%
+  mutate(
+    kclust = map(k, ~kmeans(trucks_cleaned, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    augmented = map(kclust, augment, trucks_cleaned)
+  )
+
+clusts
+```
+
+Create relevant objects  
+```{r}
+clusters =
+  clusts %>%
+  unnest(cols = c(tidied))
+
+assignments = 
+  clusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings = 
+  clusts %>%
+  unnest(cols = c(glanced))
+```
+
+Because we are clustering across multiple variables (more than 2 or 3) it's very difficult to plot the clusters in a meaningful way. However, we can look at a plot to see the performance of the clusters.
+```{r}
+ggplot(clusterings, aes(k, tot.withinss)) +
+  geom_line() +
+  geom_point() + theme_bw()
+```
+In the plot above, we are looking for the "elbow". This corresponds to the "best" number of clusters. For this data, 3 or 4 clusters would be appropriate.  
+
+Now we can cluster. Let's go with 4 clusters.  
+```{r}
+cust_clust = kmeans(trucks_cleaned, centers = 4) #run k-means clustering with k = 4
+cust_clust #view results
+```
+## Question 5 Create a plot of k versus within cluster sum of squares. Hint: We did this in the first clustering lecture. What number of clusters appears to be ideal based on this plot?
+## 4
+
+Perform k-means clustering with a pre-specified number of clusters. We use the scaled and dummied data frame.  
+```{r}
+set.seed(64)
+clusts = 
+  tibble(k = 4) %>%
+  mutate(
+    kclust = map(k, ~kmeans(trucks_cleaned, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    augmented = map(kclust, augment, trucks_cleaned)
+  )
+
+clusts
+```
+
+```{r}
+clusters = 
+  clusts %>%
+  unnest(cols = c(tidied))
+
+assignments = 
+  clusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings = 
+  clusts %>%
+  unnest(cols = c(glanced))
+```
+
+```{r}
+p1 = 
+  ggplot(assignments, aes(x = Distance, y = Speeding)) +
+  geom_point(aes(color = .cluster), alpha = 0.8) + 
+  facet_wrap(~ k)
+p1
+```
+## Question 6 Which statements (select all that apply) appear to be most apparent about the clusters created in this question?
+## A. One cluster is composed of short distance drivers with a low proportion of speeding.
+## C. One cluster is composed of long distance drivers with a low proportion of speeding.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

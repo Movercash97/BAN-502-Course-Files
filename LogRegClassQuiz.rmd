@@ -1,0 +1,195 @@
+Libraries  
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(e1071) #often needed for various statistical tasks
+library(ROCR) #for threshold selection
+library(GGally)
+```
+
+Load data from the parole.csv file.  
+```{r}
+parole = read_csv("parole.csv")
+```
+
+Factor conversion. Convert the response variable SeriousDlqin2yrs.
+```{r}
+parole = parole %>% mutate(male = as_factor(male)) %>% 
+  mutate(male = fct_recode(male, "female" = "0", "male" = "1" )) 
+
+parole = parole %>% mutate(race = as_factor(race)) %>% 
+  mutate(race = fct_recode(race, "otherwise" = "0", "white" = "1" ))
+
+parole = parole %>% mutate(state = as_factor(state)) %>% 
+  mutate(state = fct_recode(state, "any other state" = "1", "Kentucky" = "2", "Louisiana" = "3", "Virginia" = "4"))
+
+parole = parole %>% mutate(crime = as_factor(crime)) %>% 
+  mutate(crime = fct_recode(crime, "any other crime" = "1", "larceny" = "2", "drug-related crime" = "3", "driving-related crime" = "4"))
+
+parole = parole %>% mutate(multiple.offenses = as_factor(multiple.offenses)) %>% 
+  mutate(multiple.offenses = fct_recode(multiple.offenses, "otherwise" = "0", "parolee was incarcerated for multiple offenses" = "1"))
+
+parole = parole %>% mutate(violator = as_factor(violator)) %>% 
+  mutate(violator = fct_recode(violator, "parolee completed the parole without violation" = "0", "parolee violated the parole" = "1"))
+
+str(parole)
+summary(parole)
+```
+## Question 1: There are 675 parolees in the dataset. How many of these parolees ended up violating parole?
+## 78
+
+Split the data (training and testing). 70% of the data to training. Stratified the random split by the response variable "violators". 
+```{r}
+set.seed(12345)
+parole_split = initial_split(parole, prop = 0.70, strata = violator)
+train = training(parole_split)
+test = testing(parole_split)
+```
+
+```{r}
+nrow(train)
+```
+## Question 2: How many rows of data are in the training set?
+## 471
+
+```{r Ordering}
+levels(train$violator)
+```
+```{r}
+train = train %>% mutate(violator = fct_relevel(violator, c("parolee completed the parole without violation","parolee violated the parole")))
+levels(train$violator)
+```
+
+```{r Male v Female}
+ggplot(train,aes(x=male, fill=violator)) + geom_bar() + 
+  theme_bw()
+```
+## Question 3: The violation rate appears slightly higher among males than among females.
+## False
+
+```{r States}
+ggplot(train,aes(x=state, fill=violator)) + geom_bar() + 
+  theme_bw()
+```
+## Question 4: The violation rate is considerably higher in Louisiana than in the other states.
+## True
+
+```{r Max Sentence}
+ggplot(train,aes(x=max.sentence, fill=violator)) + geom_bar() + 
+  theme_bw()
+```
+## Question 5: The violation rate appears slightly higher among parolees with shorter “max_sentence” values.
+## True
+
+Model with best single variable (by correlation).  
+```{r}
+train_recipe = recipe(violator ~ state, train)
+
+train_model =  
+  logistic_reg(mode = "classification") %>%  #note the use of logistic_reg and mode = "classification"
+  set_engine("glm") #standard logistic regression engine is glm
+
+lm_wflow = 
+  workflow() %>% 
+  add_recipe(train_recipe)%>% 
+  add_model(train_model)
+
+lm_fit = fit(lm_wflow, train)
+```
+
+```{r}
+summary(lm_fit$fit$fit$fit)
+```
+## Question 6: Create a logistic regression model using the “state” variable to predict “violator”. Which state is the base level in the model summary?
+## D. Other
+
+## Question 7: To two decimal places, what is the AIC of the model with “state” to predict “violator”?
+## 278.95
+
+```{r}
+train_recipe = recipe(violator ~ state + multiple.offenses + race, train)
+
+train_model =  
+  logistic_reg(mode = "classification") %>%  #note the use of logistic_reg and mode = "classification"
+  set_engine("glm") #standard logistic regression engine is glm
+
+lm_wflow = 
+  workflow() %>% 
+  add_recipe(train_recipe)%>% 
+  add_model(train_model)
+
+lm_fit = fit(lm_wflow, train)
+```
+
+```{r}
+summary(lm_fit$fit$fit$fit)
+```
+## Question 8: Which variables are significant in the resulting model (select all that are significant)?
+## A.state, B.multiple.offenses, C.race
+
+Data cleaning (same as done before).  
+```{r}
+train = train %>% filter(state == "Louisiana") %>%
+  filter(multiple.offenses == "parolee was incarcerated for multiple offenses") %>% 
+  filter(race == "white")
+```
+
+```{r}
+summary(train)
+```
+
+Develop predictions  
+```{r}
+predictions = predict(lm_fit,train, type="prob") #develop predicted probabilities
+head(predictions)
+```
+Let's extract just the "Yes" prediction.  
+```{r}
+predictions = predict(lm_fit, train, type="prob")[2]
+head(predictions)
+```
+## Use your model from Question 8 to determine the probability (to two decimal places) that the following parolee will violate parole: The parolee is in Louisiana, has multiple offenses, and is white.
+## 0.33
+
+Threshold selection  
+```{r}
+#Change this next line to the names of your predictions and the response variable in the training data frame
+ROCRpred = prediction(predictions,train$violator)
+
+###You shouldn't need to ever change the next two lines:
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+Area under the curve (AUC). AUC is a measure of the strength of the model. Values closer to 1 are better. Can be used to compare models.  
+```{r}
+as.numeric(performance(ROCRpred, "auc")@y.values)
+```
+## Continuing to use your model from Question 8, develop an ROC curve and determine the probability threshold that best balances specificity and sensitivity (on the training set). Be sure to be careful with the predict function syntax. What is the value of this threshold (to four decimal places)?
+## 0.5
+
+```{r}
+#Determine threshold to balance sensitivity and specificity
+#DO NOT modify this code
+opt.cut = function(perf, pred){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x - 0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, pred@cutoffs)
+}
+print(opt.cut(ROCRperf, ROCRpred))
+```
+
+Test thresholds to evaluate accuracy  
+```{r}
+#confusion matrix
+#The "No" and "Yes" represent the actual values
+#The "FALSE" and "TRUE" represent our predicted values
+t1 = table(train_filter$violator,predictions > 0.5)
+t1
+```
+
+
+
+

@@ -1,0 +1,76 @@
+```{r}
+options(tidyverse.quiet = TRUE)
+library(tidyverse)
+library(VIM) #visualizing missingness
+library(mice)
+install.packages("skimr")
+library(skimr) #alternative way to view dataset summaries
+```
+
+Read in dataset   
+```{r}
+grades = read_csv("class-grades.csv")
+```
+
+```{r}
+str(grades)
+summary(grades)
+skim(grades)
+```
+## Question 1: For which variables is there missing data?
+## Tutorial, Midterm, TakeHome, Final
+
+# Looking at missingness by variable and combinations of missingness using "aggr" from VIM package.  
+```{r}
+vim_plot = aggr(grades, numbers = TRUE, prop = c(TRUE, FALSE),cex.axis= 1)
+#the cex.axis reduces size of text on x-axis so labels fit better
+```
+## Question 2: Use the VIM package to visualize missingness. Are there any students that are missing multiple pieces of data?
+## Yes?
+
+# Row-wise deletion of any row with at least one NA:
+```{r}
+grades_rowdel = grades %>% drop_na() 
+#alternatively can specify which variable(s) on which to do the drop_na
+#drop_na(Age)
+skim(grades_rowdel)
+```
+## Question 3: Use row-wise deletion of missing values to create a new data frame. How many rows remain in this data frame?
+## 89 Rows Remain
+
+Column-wise deletion of the "Age" variable (creating a new data frame with this variable removed).  
+```{r}
+grades_coldel = grades %>% select(-) 
+vim_plot = aggr(grades_coldel, numbers = TRUE, prop = c(TRUE, FALSE),cex.axis=1)
+skim(grades_coldel)
+```
+## Question 4: Use column-wise deletion of missing values to create a new data frame (from the original data frame not from the data frame created in Task 3). How many columns remain in this data frame?
+## 2
+
+## Question 5: Which approach (Task 3 or Task 4) seems preferable for this dataset? Briefly discuss your answer.
+## Task 3, using Task 4 or "Column wise would remove entire columns or categories from the dataset. I would rather lose rows of data to have a more complete view of the remaining data.
+
+Imputation. Let's use the "mice" package to do imputation.  
+```{r}
+set.seed(123) #sets seed for random number generator
+imp_grades = mice(grades, m=5, method='pmm', printFlag=FALSE)
+#m is the number of imputations, 5 is a reasonable value as a default
+#pmm is "predictive mean matching" = imputation method for numeric data
+#printFlag reduces amount of output
+summary(imp_grades)
+```
+
+```{r}
+densityplot(imp_grades, ~Final) #red imputed, blue original
+```
+Merge the imputed values into our titanic data frame  
+```{r}
+grades_complete = complete(imp_grades) 
+summary(grades_complete)
+```
+
+## Question 6: Use the “mice” package to impute the missing data in this dataset. Set “m = 5” and “method =”pmm"" in the imputation. You MUST use a random number seed of 123 for this imputation. What is the mean value for the “Final” variable after imputation?
+## The mean value for the “Final” variable after imputation is 68.33
+
+
+
